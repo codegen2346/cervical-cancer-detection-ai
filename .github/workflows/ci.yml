@@ -1,0 +1,46 @@
+name: Cervical Cancer AI Detection CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-and-run:
+    name: Run Tests & Verify Streamlit Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run Automated Test Suite
+        run: |
+          python run_tests.py
+
+      - name: Verify Automated Detection Inference
+        run: |
+          python -c "
+          from src.image_classifier import AutomaticCervicalDetector
+          detector = AutomaticCervicalDetector('models/cervical_vision_model.pth')
+          res_norm = detector.detect('data/images/samples/real_herlev_normal_cell.jpg')
+          res_abn = detector.detect('data/images/samples/real_herlev_cancer_lesion.jpg')
+          print('Normal cell result:', res_norm['prediction'], '| Conf:', res_norm['confidence'], '%')
+          print('Cancer cell result:', res_abn['prediction'], '| Conf:', res_abn['confidence'], '%')
+          assert res_abn['is_cancer_detected'] is True
+          print('GitHub Actions automated detection verified successfully!')
+          "
