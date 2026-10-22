@@ -17,8 +17,20 @@ from src.image_classifier import (
 
 @pytest.fixture
 def sample_test_images(tmp_path):
-    normal_p = os.path.abspath(r"C:\Users\ippil\.gemini\antigravity\scratch\cervical_cancer_detection\data\images\samples\real_herlev_normal_cell.jpg")
-    abnormal_p = os.path.abspath(r"C:\Users\ippil\.gemini\antigravity\scratch\cervical_cancer_detection\data\images\samples\real_herlev_cancer_lesion.jpg")
+    """
+    Creates minimal synthetic cervical-look-alike images in a temp directory.
+    Works cross-platform (Linux CI, macOS, Windows) — no absolute local paths.
+    """
+    # Pinkish-purple tones resembling a stained normal cervical cell
+    normal_img = Image.new("RGB", (128, 128), color=(210, 180, 200))
+    normal_p = str(tmp_path / "normal_cell.jpg")
+    normal_img.save(normal_p, "JPEG", quality=90)
+
+    # Darker, higher-density look resembling an abnormal/cancer cell
+    abnormal_img = Image.new("RGB", (128, 128), color=(140, 80, 120))
+    abnormal_p = str(tmp_path / "abnormal_cell.jpg")
+    abnormal_img.save(abnormal_p, "JPEG", quality=90)
+
     return normal_p, abnormal_p
 
 
