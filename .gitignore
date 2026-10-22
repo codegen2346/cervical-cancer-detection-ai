@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest / Coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Large raw archive files
+data/images/real_herlev/smear.zip
+*.zip
+
+# Streamlit logs & config
+.streamlit/
+
+# OS generated files
+.DS_Store
+Thumbs.db

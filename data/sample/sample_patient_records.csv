@@ -1,0 +1,6 @@
+Patient_ID,Age,Number of sexual partners,First sexual intercourse,Num of pregnancies,Smokes,Smokes (years),Smokes (packs/year),Hormonal Contraceptives,Hormonal Contraceptives (years),IUD,IUD (years),STDs,STDs (number),STDs:condylomatosis,STDs:cervical condylomatosis,STDs:vaginal condylomatosis,STDs:vulvo-perineal condylomatosis,STDs:syphilis,STDs:pelvic inflammatory disease,STDs:genital herpes,STDs:molluscum contagiosum,STDs:AIDS,STDs:HIV,STDs:Hepatitis B,STDs:HPV,STDs: Number of diagnosis,Dx:Cancer,Dx:CIN,Dx:HPV,Dx
+PT-001,22,1,19,0,0,0.0,0.0,1,1.0,0,0.0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+PT-002,38,3,16,3,0,0.0,0.0,1,10.0,0,0.0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+PT-003,45,6,14,4,1,20.0,15.0,1,12.0,1,5.0,1,2,1,0,0,1,0,0,0,0,0,0,0,1,1,1,0,1,1
+PT-004,32,5,15,2,1,8.0,4.0,0,0.0,0,0.0,1,1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,1
+PT-005,27,2,18,1,0,0.0,0.0,1,3.0,0,0.0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
