@@ -19,8 +19,8 @@ ENV/
 data/images/real_herlev/smear.zip
 *.zip
 
-# Streamlit logs & config
-.streamlit/
+# Streamlit secrets
+.streamlit/secrets.toml
 
 # OS generated files
 .DS_Store

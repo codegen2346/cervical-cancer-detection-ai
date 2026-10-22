@@ -181,6 +181,18 @@ if app_mode == "🖼️ Image-Based Classification":
         elif "active_img" in st.session_state:
             selected_image = st.session_state["active_img"]
             image_name = st.session_state.get("active_name", "Selected Image")
+        else:
+            # Automatically load and run detection on first open
+            if os.path.exists(abnormal_sample_path):
+                selected_image = Image.open(abnormal_sample_path)
+                image_name = "Herlev Hospital: Squamous Cell Carcinoma / HSIL (Auto-Loaded)"
+                st.session_state["active_img"] = selected_image
+                st.session_state["active_name"] = image_name
+            elif os.path.exists(normal_sample_path):
+                selected_image = Image.open(normal_sample_path)
+                image_name = "Herlev Hospital: Normal Cervical Cell (Auto-Loaded)"
+                st.session_state["active_img"] = selected_image
+                st.session_state["active_name"] = image_name
 
         if selected_image is not None:
             st.markdown("---")
