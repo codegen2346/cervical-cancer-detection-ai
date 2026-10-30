@@ -1,0 +1,19 @@
+{
+  "architecture_key": "mobilenet_v3",
+  "display_title": "MobileNetV3-Small",
+  "epoch": 5,
+  "accuracy": 0.9103,
+  "sensitivity": 1.0,
+  "specificity": 0.3,
+  "precision": 0.9067,
+  "f1": 0.951,
+  "roc_auc": 0.9353,
+  "true_positives": 68,
+  "false_positives": 7,
+  "true_negatives": 3,
+  "false_negatives": 0,
+  "total_parameters": 1001122,
+  "training_time_sec": 128.9,
+  "avg_latency_ms": 13.18,
+  "model_size_mb": 3.95
+}

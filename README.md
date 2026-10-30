@@ -12,21 +12,24 @@ An end-to-end Machine Learning and Deep Learning research system with an interac
 
 ## 🎯 Key Capabilities
 
-1. **Automatic Image-Based Cancer Detection**:
+1. **Multi-Model Vision Architecture (MobileNetV3 vs. EfficientNet-B0)**:
+   - **⚡ MobileNetV3-Small**: Ultra-fast edge model (~1.0M parameters, 3.95 MB, 13.2 ms latency) with **100% Cancer Sensitivity** (zero false negatives).
+   - **🎯 EfficientNet-B0**: High-capacity compound scaling model (~4.2M parameters, 16.2 MB) achieving **96.2% Overall Test Accuracy** and **80.0% Benign Specificity** (+50% over MobileNetV3).
+   - **Interactive UI Model Toggle**: Switch models seamlessly in 1 click from the sidebar or scanner header.
+2. **⚖️ Model Comparison Dashboard**:
+   - **Live Concurrent Dual Inference**: Tests both neural networks simultaneously on any screening photo with consensus analysis.
+   - **Side-by-Side Clinical Benchmark Table**: Accuracy, Sensitivity, Specificity, Precision, F1-Score, ROC-AUC, Parameter count, Model size, and CPU Latency.
+   - **Confusion Matrix Comparisons & Interactive Charts**: Full side-by-side diagnostic breakdown on the 78 clinical test micrographs.
+3. **Automatic Image-Based Cancer Detection**:
    - Drop in any cervical screening photo (Pap smear cytology micrograph or tissue photo).
    - **100% automated preprocessing**: handles resizing to $224 \times 224$, color channel alignment, and pixel normalization with zero manual knobs.
    - Extracts spatial pixel patterns (nuclear-to-cytoplasmic ratio, chromatin clumping, acetowhite color density).
    - Distinguishes between **Normal / Benign** and **Cervical Cancer / Abnormal Lesion**.
-2. **Visual Explainability (Grad-CAM)**:
-   - Automatically generates a visual attention heatmap superimposed on the original photo, showing the exact pixel regions that triggered the decision.
-3. **Real Clinical Benchmark Performance (Herlev Hospital Cohort)**:
-   - **Test Accuracy:** **93.6%**
-   - **Precision (Cancer):** **100.0%**
-   - **Specificity (Benign):** **100.0%**
-   - **ROC-AUC Score:** **0.866**
-4. **Batch Screening Mode**:
+4. **Visual Explainability (Grad-CAM)**:
+   - Automatically generates visual attention heatmaps superimposed on the original photo for both architectures, showing the exact pixel regions that triggered the decision.
+5. **Batch Screening Mode**:
    - Upload multiple photos or folders at once to generate a triage table and export a downloadable CSV report.
-5. **Epidemiological Tabular Risk Factor Analysis**:
+6. **Epidemiological Tabular Risk Factor Analysis**:
    - Integrated with the UCI Cervical Cancer Risk Factors dataset (858 patients) for demographic, lifestyle, and STD risk assessment.
 
 ---

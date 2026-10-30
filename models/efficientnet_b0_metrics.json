@@ -1,0 +1,19 @@
+{
+  "architecture_key": "efficientnet_b0",
+  "display_title": "EfficientNet-B0",
+  "epoch": 5,
+  "accuracy": 0.9615,
+  "sensitivity": 0.9853,
+  "specificity": 0.8,
+  "precision": 0.971,
+  "f1": 0.9781,
+  "roc_auc": 0.9691,
+  "true_positives": 67,
+  "false_positives": 2,
+  "true_negatives": 8,
+  "false_negatives": 1,
+  "total_parameters": 4171774,
+  "training_time_sec": 476.7,
+  "avg_latency_ms": 101.08,
+  "model_size_mb": 16.2
+}

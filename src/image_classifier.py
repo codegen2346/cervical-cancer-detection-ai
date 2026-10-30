@@ -71,6 +71,50 @@ class CervicalTransferCNN(nn.Module):
         return out
 
 
+class CervicalEfficientNetB0(nn.Module):
+    """
+    EfficientNet-B0 vision model fine-tuned for cervical cytology microscopy.
+    Uses compound scaling (depth, width, resolution) with Mobile Inverted Bottleneck (MBConv)
+    blocks, Squeeze-and-Excitation, and SiLU activations for rich feature representations.
+    """
+
+    def __init__(self, num_classes: int = 2, pretrained: bool = True):
+        super().__init__()
+        weights = models.EfficientNet_B0_Weights.DEFAULT if pretrained else None
+        base = models.efficientnet_b0(weights=weights)
+
+        self.features = base.features
+        self.avgpool = base.avgpool
+
+        # EfficientNet-B0 feature stage outputs 1280 channels
+        in_features = 1280
+        self.classifier = nn.Sequential(
+            nn.Linear(in_features, 128),
+            nn.SiLU(),
+            nn.Dropout(p=0.25),
+            nn.Linear(128, num_classes)
+        )
+
+        # Hook placeholders for Grad-CAM
+        self.gradients = None
+        self.activations = None
+
+    def activations_hook(self, grad):
+        self.gradients = grad
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+
+        if x.requires_grad:
+            x.register_hook(self.activations_hook)
+        self.activations = x
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        out = self.classifier(x)
+        return out
+
+
 CervicalCNN = CervicalTransferCNN
 
 
@@ -129,7 +173,7 @@ def auto_preprocess_image(
 
 
 def generate_gradcam_overlay(
-    model: CervicalTransferCNN,
+    model: nn.Module,
     tensor_img: torch.Tensor,
     original_pil: Image.Image,
     target_class_idx: int = 0
@@ -137,6 +181,7 @@ def generate_gradcam_overlay(
     """
     Compute Grad-CAM activation heatmap directly from convolutional feature maps
     and blend it onto the original photo to visually explain the detection.
+    Compatible with both MobileNetV3 and EfficientNet-B0 architectures.
     """
     model.eval()
     tensor_img = tensor_img.clone().detach().requires_grad_(True)
@@ -147,18 +192,20 @@ def generate_gradcam_overlay(
     score = output[0, target_class_idx]
     score.backward()
 
-    gradients = model.gradients
-    activations = model.activations
+    gradients = getattr(model, "gradients", None)
+    activations = getattr(model, "activations", None)
 
     if gradients is None or activations is None:
         return original_pil
 
     pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
 
-    for i in range(activations.size(1)):
-        activations[:, i, :, :] *= pooled_gradients[i]
+    # Clone activations to avoid in-place gradient mutation issues
+    acts = activations.clone()
+    for i in range(acts.size(1)):
+        acts[:, i, :, :] *= pooled_gradients[i]
 
-    heatmap = torch.mean(activations, dim=1).squeeze()
+    heatmap = torch.mean(acts, dim=1).squeeze()
     heatmap = F.relu(heatmap)
     heatmap_np = heatmap.detach().cpu().numpy()
 
@@ -181,22 +228,74 @@ def generate_gradcam_overlay(
 class AutomaticCervicalDetector:
     """
     End-to-end automatic cervical cancer detector:
+    - Supports multiple architectures: MobileNetV3-Small & EfficientNet-B0
     - Automatically preprocesses photos
     - Extracts deep pixel features
     - Determines normal vs cancer/abnormal detection
     - Generates visual heatmap explanations
     """
 
-    def __init__(self, model_path: Optional[str] = None):
+    SUPPORTED_MODELS = {
+        "mobilenet_v3": "MobileNetV3-Small (Ultra-Fast & Lightweight)",
+        "efficientnet_b0": "EfficientNet-B0 (Compound Scaling & High Capacity)"
+    }
+
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        model_name: str = "mobilenet_v3"
+    ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = CervicalTransferCNN(num_classes=2, pretrained=True).to(self.device)
+        self.model_name = "efficientnet_b0" if "efficientnet" in model_name.lower() else "mobilenet_v3"
         self.model_path = model_path
         self.is_loaded = False
+        self._init_model()
 
         if model_path and os.path.exists(model_path):
             self.load_model(model_path)
         else:
             self.is_loaded = True
+
+    def _init_model(self):
+        if self.model_name == "efficientnet_b0":
+            self.model = CervicalEfficientNetB0(num_classes=2, pretrained=True).to(self.device)
+        else:
+            self.model = CervicalTransferCNN(num_classes=2, pretrained=True).to(self.device)
+
+    def switch_model(self, model_name: str, model_path: Optional[str] = None):
+        """Switch active architecture between MobileNetV3 and EfficientNet-B0."""
+        target_name = "efficientnet_b0" if "efficientnet" in model_name.lower() else "mobilenet_v3"
+        self.model_name = target_name
+        self.model_path = model_path
+        self._init_model()
+        if model_path and os.path.exists(model_path):
+            self.load_model(model_path)
+        else:
+            self.is_loaded = True
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """Return parameters count, display name, and architectural description."""
+        param_count = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+        if self.model_name == "efficientnet_b0":
+            desc = "EfficientNet-B0 features MBConv inverted bottleneck residual blocks with Squeeze-and-Excitation (SE) and SiLU activations, balanced across depth/width/resolution."
+            display_title = "EfficientNet-B0 (Compound Scaling)"
+            tier = "High Capacity / Deep Compound Scaling"
+        else:
+            desc = "MobileNetV3-Small employs lightweight inverted residuals with Hardswish activations and SE modules, optimized for real-time mobile and edge CPU inference."
+            display_title = "MobileNetV3-Small (Edge Optimized)"
+            tier = "Ultra-Fast / Low Latency"
+
+        return {
+            "model_name": self.model_name,
+            "display_title": display_title,
+            "tier": tier,
+            "description": desc,
+            "total_parameters": param_count,
+            "trainable_parameters": trainable_params,
+            "device": str(self.device),
+        }
 
     def save_model(self, path: str):
         """Save PyTorch model weights."""
@@ -258,6 +357,8 @@ class AutomaticCervicalDetector:
         )
 
         return {
+            "model_name": self.model_name,
+            "model_title": self.get_model_info()["display_title"],
             "prediction": predicted_class,
             "is_cancer_detected": is_abnormal,
             "confidence": round(confidence * 100, 2),
@@ -272,8 +373,8 @@ class AutomaticCervicalDetector:
         }
 
 
-def setup_benchmark_images_and_model(base_dir: str) -> Tuple[str, str, str]:
-    """Ensure reference sample photos and pre-trained weights exist."""
+def setup_benchmark_images_and_model(base_dir: str) -> Tuple[str, str, str, str]:
+    """Ensure reference sample photos and pre-trained weights exist for both architectures."""
     img_dir = os.path.join(base_dir, "data", "images", "samples")
     models_dir = os.path.join(base_dir, "models")
     os.makedirs(img_dir, exist_ok=True)
@@ -281,7 +382,8 @@ def setup_benchmark_images_and_model(base_dir: str) -> Tuple[str, str, str]:
 
     normal_path = os.path.join(img_dir, "real_herlev_normal_cell.jpg")
     abnormal_path = os.path.join(img_dir, "real_herlev_cancer_lesion.jpg")
-    model_path = os.path.join(models_dir, "cervical_vision_model.pth")
+    mobilenet_path = os.path.join(models_dir, "cervical_vision_model.pth")
+    efficientnet_path = os.path.join(models_dir, "cervical_efficientnet_b0.pth")
 
     if not os.path.exists(normal_path):
         alt_norm = os.path.join(img_dir, "sample_normal_cytology.jpg")
@@ -293,8 +395,14 @@ def setup_benchmark_images_and_model(base_dir: str) -> Tuple[str, str, str]:
         if os.path.exists(alt_abn):
             abnormal_path = alt_abn
 
-    detector = AutomaticCervicalDetector(model_path if os.path.exists(model_path) else None)
-    if not os.path.exists(model_path):
-        detector.save_model(model_path)
+    # Ensure default mobileNet weights exist
+    if not os.path.exists(mobilenet_path):
+        det_mob = AutomaticCervicalDetector(model_name="mobilenet_v3")
+        det_mob.save_model(mobilenet_path)
 
-    return normal_path, abnormal_path, model_path
+    # Ensure efficientnet placeholder weights exist if not yet trained
+    if not os.path.exists(efficientnet_path):
+        det_eff = AutomaticCervicalDetector(model_name="efficientnet_b0")
+        det_eff.save_model(efficientnet_path)
+
+    return normal_path, abnormal_path, mobilenet_path, efficientnet_path

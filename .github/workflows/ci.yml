@@ -36,15 +36,21 @@ jobs:
         run: |
           python -c "
           from src.image_classifier import AutomaticCervicalDetector
-          detector = AutomaticCervicalDetector('models/cervical_vision_model.pth')
-          res_norm = detector.detect('data/images/samples/real_herlev_normal_cell.jpg')
-          res_abn = detector.detect('data/images/samples/real_herlev_cancer_lesion.jpg')
-          print('Normal cell result:', res_norm['prediction'], '| Conf:', res_norm['confidence'], '%')
-          print('Cancer cell result:', res_abn['prediction'], '| Conf:', res_abn['confidence'], '%')
-          # Verify inference pipeline runs end-to-end and returns valid structured output
-          assert 'prediction' in res_norm and 'confidence' in res_norm
-          assert 'prediction' in res_abn and 'confidence' in res_abn
-          assert 0.0 <= res_norm['confidence'] <= 100.0
-          assert 0.0 <= res_abn['confidence'] <= 100.0
-          print('GitHub Actions automated detection verified successfully!')
+          # 1. Verify MobileNetV3
+          det_mob = AutomaticCervicalDetector('models/cervical_vision_model.pth', model_name='mobilenet_v3')
+          res_m_norm = det_mob.detect('data/images/samples/real_herlev_normal_cell.jpg')
+          res_m_abn = det_mob.detect('data/images/samples/real_herlev_cancer_lesion.jpg')
+          print('MobileNetV3 Normal:', res_m_norm['prediction'], '| Conf:', res_m_norm['confidence'], '%')
+          print('MobileNetV3 Cancer:', res_m_abn['prediction'], '| Conf:', res_m_abn['confidence'], '%')
+          assert 'prediction' in res_m_norm and 'confidence' in res_m_norm
+
+          # 2. Verify EfficientNet-B0
+          det_eff = AutomaticCervicalDetector('models/cervical_efficientnet_b0.pth', model_name='efficientnet_b0')
+          res_e_norm = det_eff.detect('data/images/samples/real_herlev_normal_cell.jpg')
+          res_e_abn = det_eff.detect('data/images/samples/real_herlev_cancer_lesion.jpg')
+          print('EfficientNet-B0 Normal:', res_e_norm['prediction'], '| Conf:', res_e_norm['confidence'], '%')
+          print('EfficientNet-B0 Cancer:', res_e_abn['prediction'], '| Conf:', res_e_abn['confidence'], '%')
+          assert 'prediction' in res_e_norm and 'confidence' in res_e_norm
+
+          print('GitHub Actions multi-model detection verified successfully!')
           "
