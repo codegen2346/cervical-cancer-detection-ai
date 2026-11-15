@@ -110,3 +110,42 @@ def test_save_and_load_weights(tmp_path):
 
     new_detector = AutomaticCervicalDetector(model_path=model_p)
     assert new_detector.is_loaded is True
+
+
+def test_wrong_photo_detection_rejection(tmp_path):
+    """Verify that non-cervical / unrelated images are automatically rejected as WRONG PHOTO."""
+    detector = AutomaticCervicalDetector(model_name="mobilenet_v3")
+
+    # 1. Severely dark photo (e.g. night scenery / black object)
+    dark_p = str(tmp_path / "dark_photo.jpg")
+    Image.new("RGB", (128, 128), color=(15, 20, 25)).save(dark_p)
+    res_dark = detector.detect(dark_p)
+    assert res_dark["is_valid_cervical_photo"] is False
+    assert "Wrong Photo" in res_dark["prediction"]
+    assert res_dark["confidence"] == 0.0
+    assert "error_reason" in res_dark
+
+    # 2. Outdoor landscape / green foliage
+    green_p = str(tmp_path / "green_landscape.jpg")
+    Image.new("RGB", (128, 128), color=(20, 160, 30)).save(green_p)
+    res_green = detector.detect(green_p)
+    assert res_green["is_valid_cervical_photo"] is False
+    assert "Wrong Photo" in res_green["prediction"]
+
+    # 3. Blank white screen
+    blank_p = str(tmp_path / "blank_canvas.jpg")
+    Image.new("RGB", (128, 128), color=(255, 255, 255)).save(blank_p)
+    res_blank = detector.detect(blank_p)
+    assert res_blank["is_valid_cervical_photo"] is False
+    assert "Wrong Photo" in res_blank["prediction"]
+
+
+def test_real_clinical_samples_pass_validation():
+    """Verify that genuine cervical Pap smear samples pass domain verification."""
+    detector = AutomaticCervicalDetector(model_name="mobilenet_v3")
+    sample_p = "data/images/samples/real_herlev_cancer_lesion.jpg"
+    if os.path.exists(sample_p):
+        res = detector.detect(sample_p)
+        assert res["is_valid_cervical_photo"] is True
+        assert res["confidence"] > 0.0
+        assert "prediction" in res

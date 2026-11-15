@@ -68,6 +68,15 @@ st.markdown("""
         color: #155724;
         margin-bottom: 15px;
     }
+    .result-box-invalid {
+        background-color: #f8d7da;
+        border: 2px solid #dc3545;
+        border-radius: 8px;
+        padding: 18px;
+        text-align: center;
+        color: #721c24;
+        margin-bottom: 15px;
+    }
     .model-card {
         background-color: #f8f9fa;
         border: 1px solid #dee2e6;
@@ -315,59 +324,87 @@ if app_mode == "🖼️ Image-Based Classification":
                 results = active_detector.detect(selected_image)
                 infer_ms = (time.perf_counter() - t_start) * 1000.0
 
-            # Display Decision Banner
-            is_detected = results["is_cancer_detected"]
-            conf = results["confidence"]
-
-            if is_detected:
+            # Check if image passed cytology domain validation
+            if not results.get("is_valid_cervical_photo", True):
                 st.markdown(f"""
-                <div class="result-box-positive">
-                    <h2 style="margin:0; color:#dc3545;">⚠️ {results['prediction'].upper()} DETECTED</h2>
-                    <h4 style="margin:6px 0; color:#721c24;">Model Confidence: <strong>{conf:.1f}%</strong> | Risk Tier: <strong>{results['risk_tier']}</strong> | Model: <strong>{active_bench['display_title']}</strong></h4>
-                    <p style="margin:0; font-size:14px;">{results['clinical_advisory']}</p>
+                <div class="result-box-invalid">
+                    <h2 style="margin:0; color:#dc3545;">❌ WRONG PHOTO UPLOADED</h2>
+                    <h4 style="margin:6px 0; color:#721c24;">Unrelated Image Detected — Not a Cervical Screening Micrograph</h4>
+                    <p style="margin:4px 0 0 0; font-size:15px;"><strong>Detection Flag:</strong> {results['error_reason']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+
+                col_err1, col_err2 = st.columns([1, 2])
+                with col_err1:
+                    st.markdown("##### 📷 Uploaded Image")
+                    st.image(results["resized_image"], use_container_width=True, caption="Rejected Image (Non-Cervical)")
+
+                with col_err2:
+                    st.markdown("##### 🔬 Automatic Microscopic Quality & Domain Verification")
+                    st.markdown("""
+                    To prevent hazardous false medical diagnoses, the system automatically verifies every upload against clinical histology criteria:
+                    * **Illumination & Textural Contrast:** Checks for optical brightfield microscopy lighting and cellular textural variance.
+                    * **Papanicolaou Staining Profile:** Validates hematoxylin (basophilic) and counterstain balance, rejecting unnatural foliage greens, saturated icons, or extreme color casts.
+                    * **Deep Cytology Embedding Match:** Evaluates deep neural feature manifold cosine similarity against verified clinical cervical cells.
+                    """)
+                    if "verification_checks" in results:
+                        st.json(results["verification_checks"])
+                    st.warning("⚠️ **No cancer diagnosis was run on this image.** Please upload a genuine Pap smear microscopic slide photo or select one of the verified clinical samples above.")
+
             else:
-                st.markdown(f"""
-                <div class="result-box-negative">
-                    <h2 style="margin:0; color:#28a745;">✅ {results['prediction'].upper()}</h2>
-                    <h4 style="margin:6px 0; color:#155724;">Model Confidence: <strong>{conf:.1f}%</strong> | Risk Tier: <strong>{results['risk_tier']}</strong> | Model: <strong>{active_bench['display_title']}</strong></h4>
-                    <p style="margin:0; font-size:14px;">{results['clinical_advisory']}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                # Display Decision Banner
+                is_detected = results["is_cancer_detected"]
+                conf = results["confidence"]
 
-            # Visual Comparison & Heatmap Display
-            col_img1, col_img2, col_stats = st.columns([1, 1, 1])
+                if is_detected:
+                    st.markdown(f"""
+                    <div class="result-box-positive">
+                        <h2 style="margin:0; color:#dc3545;">⚠️ {results['prediction'].upper()} DETECTED</h2>
+                        <h4 style="margin:6px 0; color:#721c24;">Model Confidence: <strong>{conf:.1f}%</strong> | Risk Tier: <strong>{results['risk_tier']}</strong> | Model: <strong>{active_bench['display_title']}</strong></h4>
+                        <p style="margin:0; font-size:14px;">{results['clinical_advisory']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="result-box-negative">
+                        <h2 style="margin:0; color:#28a745;">✅ {results['prediction'].upper()}</h2>
+                        <h4 style="margin:6px 0; color:#155724;">Model Confidence: <strong>{conf:.1f}%</strong> | Risk Tier: <strong>{results['risk_tier']}</strong> | Model: <strong>{active_bench['display_title']}</strong></h4>
+                        <p style="margin:0; font-size:14px;">{results['clinical_advisory']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            with col_img1:
-                st.markdown("##### 📷 Original Photo")
-                st.image(results["resized_image"], use_container_width=True, caption="Normalized Image (224x224)")
+                # Visual Comparison & Heatmap Display
+                col_img1, col_img2, col_stats = st.columns([1, 1, 1])
 
-            with col_img2:
-                st.markdown(f"##### 🎯 Pixel Attention Heatmap (Grad-CAM)")
-                st.image(
-                    results["heatmap_overlay"],
-                    use_container_width=True,
-                    caption=f"{active_bench['display_title']} attention highlighting flagged cellular pixels"
-                )
+                with col_img1:
+                    st.markdown("##### 📷 Original Photo")
+                    st.image(results["resized_image"], use_container_width=True, caption="Normalized Image (224x224)")
 
-            with col_stats:
-                st.markdown("##### 📊 Extracted Pixel Features")
-                pstats = results["pixel_stats"]
-                st.markdown(f"""
-                * **Source Dimensions:** `{pstats['original_dimensions']}`
-                * **Average Brightness:** `{pstats['brightness']} / 255`
-                * **Pixel Contrast:** `{pstats['contrast']}`
-                * **Nuclear Chromatin Density:** `{pstats['nuclear_chromatin_pixel_density']}`
-                * **Inference Speed:** `{infer_ms:.1f} ms`
-                """)
+                with col_img2:
+                    st.markdown(f"##### 🎯 Pixel Attention Heatmap (Grad-CAM)")
+                    st.image(
+                        results["heatmap_overlay"],
+                        use_container_width=True,
+                        caption=f"{active_bench['display_title']} attention highlighting flagged cellular pixels"
+                    )
 
-                st.markdown("##### 📈 Class Probability Scores")
-                prob_df = pd.DataFrame({
-                    "Class": ["Normal / Benign", "Cancer / Lesion"],
-                    "Probability (%)": [results["prob_normal"], results["prob_abnormal"]]
-                })
-                st.bar_chart(prob_df.set_index("Class"), height=180)
+                with col_stats:
+                    st.markdown("##### 📊 Extracted Pixel Features")
+                    pstats = results["pixel_stats"]
+                    st.markdown(f"""
+                    * **Source Dimensions:** `{pstats['original_dimensions']}`
+                    * **Average Brightness:** `{pstats['brightness']} / 255`
+                    * **Pixel Contrast:** `{pstats['contrast']}`
+                    * **Nuclear Chromatin Density:** `{pstats['nuclear_chromatin_pixel_density']}`
+                    * **Inference Speed:** `{infer_ms:.1f} ms`
+                    """)
+
+                    st.markdown("##### 📈 Class Probability Scores")
+                    prob_df = pd.DataFrame({
+                        "Class": ["Normal / Benign", "Cancer / Lesion"],
+                        "Probability (%)": [results["prob_normal"], results["prob_abnormal"]]
+                    })
+                    st.bar_chart(prob_df.set_index("Class"), height=180)
 
         else:
             st.info("👆 Click one of the sample buttons above or upload a photo to perform automatic detection.")
@@ -400,40 +437,61 @@ if app_mode == "🖼️ Image-Based Classification":
                 res_eff = detectors["efficientnet_b0"].detect(current_img)
                 ms_eff = (time.perf_counter() - t0_e) * 1000.0
 
-            # Consensus assessment
-            agree = res_mob["is_cancer_detected"] == res_eff["is_cancer_detected"]
-            if agree:
-                common_class = res_mob["prediction"]
-                avg_conf = (res_mob["confidence"] + res_eff["confidence"]) / 2.0
+            # Consensus & Domain Validity Assessment
+            valid_m = res_mob.get("is_valid_cervical_photo", True)
+            valid_e = res_eff.get("is_valid_cervical_photo", True)
+
+            if not valid_m or not valid_e:
+                err_msg = res_mob.get("error_reason") if not valid_m else res_eff.get("error_reason")
                 st.markdown(f"""
-                <div class="consensus-agree">
-                    <h3 style="margin:0;">✅ Diagnostic Consensus: Both Models Agree ({common_class.upper()})</h3>
-                    <p style="margin:4px 0 0 0; font-size:14px;">Combined Average Confidence: <strong>{avg_conf:.1f}%</strong> | Strong architectural alignment on morphological features.</p>
+                <div class="result-box-invalid">
+                    <h3 style="margin:0; color:#dc3545;">❌ WRONG PHOTO DETECTED BY BOTH ARCHITECTURES</h3>
+                    <p style="margin:6px 0 0 0; font-size:15px;"><strong>Detection Flag:</strong> {err_msg}</p>
+                    <p style="margin:4px 0 0 0; font-size:13px; color:#721c24;">Both MobileNetV3 and EfficientNet-B0 domain filters confirmed this image is an unrelated non-microscopic photo. No cancer classification was executed.</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.markdown(f"""
-                <div class="consensus-diverge">
-                    <h3 style="margin:0;">⚠️ Diagnostic Divergence Detected</h3>
-                    <p style="margin:4px 0 0 0; font-size:14px;">MobileNetV3 predicted <strong>{res_mob['prediction']}</strong> ({res_mob['confidence']:.1f}%) while EfficientNet-B0 predicted <strong>{res_eff['prediction']}</strong> ({res_eff['confidence']:.1f}%). Secondary cytotechnologist review recommended.</p>
-                </div>
-                """, unsafe_allow_html=True)
+                agree = res_mob["is_cancer_detected"] == res_eff["is_cancer_detected"]
+                if agree:
+                    common_class = res_mob["prediction"]
+                    avg_conf = (res_mob["confidence"] + res_eff["confidence"]) / 2.0
+                    st.markdown(f"""
+                    <div class="consensus-agree">
+                        <h3 style="margin:0;">✅ Diagnostic Consensus: Both Models Agree ({common_class.upper()})</h3>
+                        <p style="margin:4px 0 0 0; font-size:14px;">Combined Average Confidence: <strong>{avg_conf:.1f}%</strong> | Strong architectural alignment on morphological features.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="consensus-diverge">
+                        <h3 style="margin:0;">⚠️ Diagnostic Divergence Detected</h3>
+                        <p style="margin:4px 0 0 0; font-size:14px;">MobileNetV3 predicted <strong>{res_mob['prediction']}</strong> ({res_mob['confidence']:.1f}%) while EfficientNet-B0 predicted <strong>{res_eff['prediction']}</strong> ({res_eff['confidence']:.1f}%). Secondary cytotechnologist review recommended.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
             dual_col1, dual_col2 = st.columns(2)
 
             with dual_col1:
                 st.markdown("#### ⚡ MobileNetV3-Small")
-                flag_m = "🔴 CANCER / LESION" if res_mob["is_cancer_detected"] else "🟢 NORMAL / BENIGN"
-                st.markdown(f"**Outcome:** `{flag_m}` | **Confidence:** `{res_mob['confidence']:.1f}%` | **Latency:** `{ms_mob:.1f} ms`")
-                st.image(res_mob["heatmap_overlay"], use_container_width=True, caption="MobileNetV3 Grad-CAM Attention Heatmap")
-                st.progress(res_mob["confidence"] / 100.0, text=f"Confidence: {res_mob['confidence']:.1f}%")
+                if not valid_m:
+                    st.error("❌ Wrong Photo / Unrelated Image")
+                    st.image(res_mob["resized_image"], use_container_width=True, caption="Rejected Image")
+                else:
+                    flag_m = "🔴 CANCER / LESION" if res_mob["is_cancer_detected"] else "🟢 NORMAL / BENIGN"
+                    st.markdown(f"**Outcome:** `{flag_m}` | **Confidence:** `{res_mob['confidence']:.1f}%` | **Latency:** `{ms_mob:.1f} ms`")
+                    st.image(res_mob["heatmap_overlay"], use_container_width=True, caption="MobileNetV3 Grad-CAM Attention Heatmap")
+                    st.progress(res_mob["confidence"] / 100.0, text=f"Confidence: {res_mob['confidence']:.1f}%")
 
             with dual_col2:
                 st.markdown("#### 🎯 EfficientNet-B0")
-                flag_e = "🔴 CANCER / LESION" if res_eff["is_cancer_detected"] else "🟢 NORMAL / BENIGN"
-                st.markdown(f"**Outcome:** `{flag_e}` | **Confidence:** `{res_eff['confidence']:.1f}%` | **Latency:** `{ms_eff:.1f} ms`")
-                st.image(res_eff["heatmap_overlay"], use_container_width=True, caption="EfficientNet-B0 Grad-CAM Attention Heatmap")
-                st.progress(res_eff["confidence"] / 100.0, text=f"Confidence: {res_eff['confidence']:.1f}%")
+                if not valid_e:
+                    st.error("❌ Wrong Photo / Unrelated Image")
+                    st.image(res_eff["resized_image"], use_container_width=True, caption="Rejected Image")
+                else:
+                    flag_e = "🔴 CANCER / LESION" if res_eff["is_cancer_detected"] else "🟢 NORMAL / BENIGN"
+                    st.markdown(f"**Outcome:** `{flag_e}` | **Confidence:** `{res_eff['confidence']:.1f}%` | **Latency:** `{ms_eff:.1f} ms`")
+                    st.image(res_eff["heatmap_overlay"], use_container_width=True, caption="EfficientNet-B0 Grad-CAM Attention Heatmap")
+                    st.progress(res_eff["confidence"] / 100.0, text=f"Confidence: {res_eff['confidence']:.1f}%")
 
         else:
             st.info("Upload or select a photo in the Instant Photo Scanner tab to see live side-by-side inference.")
@@ -542,13 +600,14 @@ if app_mode == "🖼️ Image-Based Classification":
                 for i, file_obj in enumerate(batch_files):
                     img = Image.open(file_obj)
                     res = active_detector.detect(img)
+                    is_valid = res.get("is_valid_cervical_photo", True)
                     batch_records.append({
                         "File Name": file_obj.name,
                         "Model Used": active_bench["display_title"],
-                        "Detection Decision": res["prediction"],
-                        "Abnormal / Cancer Flag": "🔴 Positive" if res["is_cancer_detected"] else "🟢 Negative",
-                        "Confidence (%)": f"{res['confidence']:.1f}%",
-                        "Abnormal Probability (%)": f"{res['prob_abnormal']:.1f}%",
+                        "Detection Decision": res["prediction"] if is_valid else "❌ WRONG PHOTO (Unrelated)",
+                        "Abnormal / Cancer Flag": ("🔴 Positive" if res["is_cancer_detected"] else "🟢 Negative") if is_valid else "⛔ Rejected (Non-Cervical)",
+                        "Confidence (%)": f"{res['confidence']:.1f}%" if is_valid else "N/A",
+                        "Abnormal Probability (%)": f"{res['prob_abnormal']:.1f}%" if is_valid else "N/A",
                         "Risk Tier": res["risk_tier"]
                     })
                     progress_bar.progress((i + 1) / len(batch_files))

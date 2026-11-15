@@ -20,7 +20,13 @@ An end-to-end Machine Learning and Deep Learning research system with an interac
    - **Live Concurrent Dual Inference**: Tests both neural networks simultaneously on any screening photo with consensus analysis.
    - **Side-by-Side Clinical Benchmark Table**: Accuracy, Sensitivity, Specificity, Precision, F1-Score, ROC-AUC, Parameter count, Model size, and CPU Latency.
    - **Confusion Matrix Comparisons & Interactive Charts**: Full side-by-side diagnostic breakdown on the 78 clinical test micrographs.
-3. **Automatic Image-Based Cancer Detection**:
+3. **🚫 Automatic Wrong Photo & Unrelated Image Detection (Domain Guard)**:
+   - Rejects non-cervical everyday photos (landscapes, vehicles, selfies, screenshots, solid colors, dark scenes) automatically before running diagnosis.
+   - Multi-layer validation verifies:
+     - **Optical Brightfield Microscopy Illumination**: checks that the image was captured under illuminated optical microscope.
+     - **Papanicolaou Chromatic Spectrum**: checks hematoxylin (basophilic) and counterstain balance, rejecting unnatural foliage greens, saturated icons, or extreme color casts.
+     - **Deep Feature Domain Embedding**: evaluates cosine similarity on the deep feature manifold against verified Herlev hospital cytology centroids.
+4. **Automatic Image-Based Cancer Detection**:
    - Drop in any cervical screening photo (Pap smear cytology micrograph or tissue photo).
    - **100% automated preprocessing**: handles resizing to $224 \times 224$, color channel alignment, and pixel normalization with zero manual knobs.
    - Extracts spatial pixel patterns (nuclear-to-cytoplasmic ratio, chromatin clumping, acetowhite color density).

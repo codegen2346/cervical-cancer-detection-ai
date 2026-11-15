@@ -229,6 +229,7 @@ class AutomaticCervicalDetector:
     """
     End-to-end automatic cervical cancer detector:
     - Supports multiple architectures: MobileNetV3-Small & EfficientNet-B0
+    - Automatically detects WRONG / UNRELATED photos (non-cervical images)
     - Automatically preprocesses photos
     - Extracts deep pixel features
     - Determines normal vs cancer/abnormal detection
@@ -243,11 +244,14 @@ class AutomaticCervicalDetector:
     def __init__(
         self,
         model_path: Optional[str] = None,
-        model_name: str = "mobilenet_v3"
+        model_name: str = "mobilenet_v3",
+        centroid_path: Optional[str] = None
     ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = "efficientnet_b0" if "efficientnet" in model_name.lower() else "mobilenet_v3"
         self.model_path = model_path
+        self.centroid_path = centroid_path
+        self.centroid = None
         self.is_loaded = False
         self._init_model()
 
@@ -256,11 +260,37 @@ class AutomaticCervicalDetector:
         else:
             self.is_loaded = True
 
+        self._load_centroid(centroid_path)
+
     def _init_model(self):
         if self.model_name == "efficientnet_b0":
             self.model = CervicalEfficientNetB0(num_classes=2, pretrained=True).to(self.device)
+            self.domain_threshold = 0.10
         else:
             self.model = CervicalTransferCNN(num_classes=2, pretrained=True).to(self.device)
+            self.domain_threshold = 0.38
+
+    def _load_centroid(self, custom_path: Optional[str] = None):
+        """Load precomputed clinical cytology domain centroid for out-of-distribution detection."""
+        candidate_paths = []
+        if custom_path:
+            candidate_paths.append(custom_path)
+        if self.model_path:
+            base_dir = os.path.dirname(os.path.abspath(self.model_path))
+            candidate_paths.append(os.path.join(base_dir, f"{self.model_name}_centroid.pt"))
+        # Fallback to default project models dir
+        default_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+        candidate_paths.append(os.path.join(default_dir, f"{self.model_name}_centroid.pt"))
+
+        for p in candidate_paths:
+            if os.path.exists(p):
+                try:
+                    c = torch.load(p, map_location=self.device, weights_only=True)
+                    self.centroid = c.to(self.device)
+                    self.centroid_path = p
+                    break
+                except Exception:
+                    pass
 
     def switch_model(self, model_name: str, model_path: Optional[str] = None):
         """Switch active architecture between MobileNetV3 and EfficientNet-B0."""
@@ -272,6 +302,7 @@ class AutomaticCervicalDetector:
             self.load_model(model_path)
         else:
             self.is_loaded = True
+        self._load_centroid()
 
     def get_model_info(self) -> Dict[str, Any]:
         """Return parameters count, display name, and architectural description."""
@@ -297,6 +328,83 @@ class AutomaticCervicalDetector:
             "device": str(self.device),
         }
 
+    def verify_cervical_domain(
+        self,
+        resized_pil: Image.Image,
+        tensor_img: torch.Tensor
+    ) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Multi-stage verification to detect whether the uploaded image is a genuine cervical photo
+        or a WRONG/UNRELATED image (e.g. landscape, car, selfie, document, dark photo, icon):
+        1. Optical microscopic brightfield illumination check
+        2. Biological histology staining chromatic distribution (|R-B| balance, non-foliage, saturation)
+        3. Basophilic nuclear chromatin check
+        4. Deep neural feature manifold cosine similarity to Herlev clinical cytology centroid
+        """
+        arr = np.array(resized_pil, dtype=np.float32)
+        b = float(np.mean(arr))
+        s = float(np.std(arr))
+        checks = {
+            "mean_brightness": round(b, 1),
+            "contrast_std": round(s, 1),
+        }
+
+        # 1. Optical Illumination & Textural Texture
+        if b < 45.0:
+            return False, "Image is severely underexposed or dark (optical microscopy requires brightfield illumination)", checks
+        if b > 250.0 and s < 8.0:
+            return False, "Image appears to be an empty or blank white canvas", checks
+        if s < 6.5:
+            return False, "Image lacks optical microscopic texture (solid or near-solid color canvas)", checks
+
+        # 2. Histological Staining Chromatic Profile
+        mean_rgb = arr.mean(axis=(0, 1))
+        rb_diff = float(abs(mean_rgb[0] - mean_rgb[2]))
+        checks["red_blue_difference"] = round(rb_diff, 1)
+        if rb_diff > 60.0:
+            return False, f"Non-microscopic color imbalance (|R - B| = {rb_diff:.1f} > 60.0 exceeds histology threshold)", checks
+
+        # Foliage / unnatural vegetation green check
+        r, g, bl = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+        green_mask = (g > (r + 25)) & (g > (bl + 25))
+        green_ratio = float(np.mean(green_mask))
+        checks["foliage_green_ratio"] = round(green_ratio, 3)
+        if green_ratio > 0.25:
+            return False, "Dominant outdoor green/vegetation color palette detected", checks
+
+        # Hyper-saturation check (everyday graphic icons, neon colors)
+        hsv = np.array(resized_pil.convert("HSV"), dtype=np.float32)
+        mean_sat = float(hsv[:, :, 1].mean())
+        checks["mean_saturation"] = round(mean_sat, 1)
+        if mean_sat > 155.0:
+            return False, "Hyper-saturated color palette detected (incompatible with biological histology stains)", checks
+
+        # 3. Basophilic Nuclear Chromatin Check
+        dark_mask = arr.mean(axis=2) < 140
+        dark_pixels = arr[dark_mask]
+        if len(dark_pixels) > 0:
+            bg_diff = float(np.mean(dark_pixels[:, 2] - dark_pixels[:, 1]))
+            checks["chromatin_basophilic_gradient"] = round(bg_diff, 1)
+            if bg_diff < -28.0:
+                return False, "Lacks basophilic nuclear chromatin (dark pixels do not match hematoxylin absorption)", checks
+
+        # 4. Deep Neural Feature Domain Cosine Similarity Check
+        cos_sim = 1.0
+        if self.centroid is not None:
+            with torch.no_grad():
+                feat = self.model.features(tensor_img)
+                feat = self.model.avgpool(feat)
+                feat = torch.flatten(feat, 1)
+                feat = feat / torch.norm(feat, dim=1, keepdim=True)
+                cos_sim = float(torch.mm(feat, self.centroid.t())[0, 0])
+            checks["domain_similarity"] = round(cos_sim, 3)
+            checks["domain_threshold"] = self.domain_threshold
+
+            if cos_sim < self.domain_threshold:
+                return False, f"Deep visual feature manifold does not match cervical cytology (similarity: {cos_sim:.2f} < threshold: {self.domain_threshold:.2f})", checks
+
+        return True, "Valid cervical screening photo", checks
+
     def save_model(self, path: str):
         """Save PyTorch model weights."""
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -317,12 +425,41 @@ class AutomaticCervicalDetector:
     ) -> Dict[str, Any]:
         """
         Completely automatic detection function:
-        Accepts any photo, extracts pixels, decides detection, and outputs heatmap.
-        Index 0: Abnormal / Cancer
-        Index 1: Normal / Benign
+        1. Preprocesses image and extracts pixels.
+        2. Automatically validates whether photo is a cervical cytology micrograph or WRONG PHOTO.
+        3. If wrong photo, immediately returns informative rejection flag without running false cancer diagnosis.
+        4. If valid, runs deep classification and generates Grad-CAM attention heatmap.
         """
         tensor_img, resized_pil, pixel_stats = auto_preprocess_image(image_input)
         tensor_img = tensor_img.to(self.device)
+
+        # Domain Verification Gate (Wrong Photo Detector)
+        is_valid, validation_reason, checks = self.verify_cervical_domain(resized_pil, tensor_img)
+
+        if not is_valid:
+            return {
+                "is_valid_cervical_photo": False,
+                "error_title": "Wrong Photo Uploaded / Unrelated Image Detected",
+                "error_reason": validation_reason,
+                "verification_checks": checks,
+                "model_name": self.model_name,
+                "model_title": self.get_model_info()["display_title"],
+                "prediction": "Wrong Photo / Unrelated Image",
+                "is_cancer_detected": False,
+                "confidence": 0.0,
+                "prob_abnormal": 0.0,
+                "prob_normal": 0.0,
+                "risk_tier": "Invalid Input (Wrong Photo)",
+                "badge_color": "#dc3545",
+                "clinical_advisory": (
+                    f"❌ WRONG PHOTO DETECTED: {validation_reason}. "
+                    "The system automatically rejected this file because it does not match cervical cytology or Pap smear standards. "
+                    "Please upload a genuine cervical screening photo or clinical micrograph."
+                ),
+                "pixel_stats": pixel_stats,
+                "resized_image": resized_pil,
+                "heatmap_overlay": resized_pil,
+            }
 
         self.model.eval()
         logits = self.model(tensor_img)
@@ -357,6 +494,7 @@ class AutomaticCervicalDetector:
         )
 
         return {
+            "is_valid_cervical_photo": True,
             "model_name": self.model_name,
             "model_title": self.get_model_info()["display_title"],
             "prediction": predicted_class,
@@ -370,6 +508,7 @@ class AutomaticCervicalDetector:
             "pixel_stats": pixel_stats,
             "resized_image": resized_pil,
             "heatmap_overlay": overlay_img,
+            "verification_checks": checks,
         }
 
 

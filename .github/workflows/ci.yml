@@ -52,5 +52,15 @@ jobs:
           print('EfficientNet-B0 Cancer:', res_e_abn['prediction'], '| Conf:', res_e_abn['confidence'], '%')
           assert 'prediction' in res_e_norm and 'confidence' in res_e_norm
 
+          # 3. Verify Wrong Photo Detection
+          from PIL import Image
+          import tempfile
+          with tempfile.NamedTemporaryFile(suffix='.jpg') as f:
+              Image.new('RGB', (128, 128), color=(20, 160, 30)).save(f.name)
+              res_wrong = det_mob.detect(f.name)
+              assert res_wrong['is_valid_cervical_photo'] is False
+              assert 'Wrong Photo' in res_wrong['prediction']
+              print('Wrong Photo Detection verified successfully:', res_wrong['error_reason'])
+
           print('GitHub Actions multi-model detection verified successfully!')
           "
